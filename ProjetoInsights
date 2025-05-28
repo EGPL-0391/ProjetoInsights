@@ -6,7 +6,7 @@ import dash_bootstrap_components as dbc
 import os
 
 # === 1. Carregar base ===
-arquivo = r"C:\Users\guilherme.lopes\OneDrive - Cadiveu\Área de Trabalho\base_vendas_24.xlsx"
+arquivo = r'C:\py\base_vendas_24.xlsx'
 
 df = pd.read_excel(arquivo, sheet_name='Base vendas')
 
