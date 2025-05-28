@@ -5,8 +5,12 @@ from dash import Dash, dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 import os
 
-# === 1. Carregar base ===
-arquivo = 'C:/py/base_vendas_24.xlsx'
+# Caminho absoluto relativo ao local onde está o script
+base_dir = os.path.dirname(os.path.abspath(__file__))
+arquivo = os.path.join(base_dir, 'data', 'base_vendas_24.xlsx')
+
+if not os.path.exists(arquivo):
+    raise FileNotFoundError(f"Arquivo não encontrado: {arquivo}")
 
 df = pd.read_excel(arquivo, sheet_name='Base vendas')
 
