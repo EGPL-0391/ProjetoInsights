@@ -1,3 +1,0 @@
-git add data/base_vendas_24.xlsx
-git commit -m "Adiciona base de vendas"
-git push
