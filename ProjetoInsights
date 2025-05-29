@@ -5,62 +5,59 @@ from dash import Dash, dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 import os
 
-# Caminho absoluto relativo ao local onde está o script
+# === Caminho do arquivo ===
 base_dir = os.path.dirname(os.path.abspath(__file__))
 arquivo = os.path.join(base_dir, 'data', 'base_vendas_24.xlsx')
 
 if not os.path.exists(arquivo):
     raise FileNotFoundError(f"Arquivo não encontrado: {arquivo}")
 
+# === Carregar e tratar os dados ===
 df = pd.read_excel(arquivo, sheet_name='Base vendas')
-
-# === 2. Limpeza ===
 df.columns = df.columns.str.strip()
 df['Emissao'] = pd.to_datetime(df['Emissao'], errors='coerce')
 df = df.dropna(subset=['Emissao', 'Cliente', 'Produto', 'Quantidade'])
 df['AnoMes'] = df['Emissao'].dt.to_period('M').dt.to_timestamp()
 df['Cliente'] = df['Cliente'].astype(str)
 df['Produto'] = df['Produto'].astype(str)
-
-# === 3. Filtrar apenas vendas de 2024 em diante ===
 df = df[df['AnoMes'] >= '2024-01-01']
 
-# === 4. Agrupar dados ===
+# === Agrupar dados ===
 agrupado = df.groupby(['Cliente', 'Produto', 'AnoMes'])['Quantidade'].sum().reset_index()
 
-# === 5. Função de previsão ===
+# === Função de previsão ===
 def prever(cliente, produto):
     dados = agrupado[(agrupado['Cliente'] == cliente) & (agrupado['Produto'] == produto)].copy()
     dados = dados.sort_values('AnoMes')
+    dados['Previsao'] = 'Histórico'
 
-    if len(dados) < 6:
-        return pd.DataFrame(), "Dados insuficientes para previsão."
+    if dados.empty:
+        return dados, "Sem dados suficientes para previsão."
 
     serie = dados.set_index('AnoMes')['Quantidade']
     
-    # Corrigir o índice para ter frequência mensal regular
+    # Preencher índice para frequência mensal regular
     serie.index = pd.date_range(start=serie.index.min(), periods=len(serie), freq='MS')
 
     try:
         modelo = ExponentialSmoothing(serie, trend='add', seasonal=None, initialization_method='estimated')
         ajuste = modelo.fit()
         previsao = ajuste.forecast(12).round().astype(int)
-    except Exception as e:
-        return pd.DataFrame(), f"Erro ao ajustar o modelo: {str(e)}"
 
-    previsao = previsao.reset_index()
-    previsao.columns = ['AnoMes', 'Quantidade']
-    previsao['Cliente'] = cliente
-    previsao['Produto'] = produto
-    previsao['Previsao'] = 'Previsão'
+        previsao = previsao.reset_index()
+        previsao.columns = ['AnoMes', 'Quantidade']
+        previsao['Cliente'] = cliente
+        previsao['Produto'] = produto
+        previsao['Previsao'] = 'Previsão'
 
-    dados['Previsao'] = 'Histórico'
-    dados = dados.rename(columns={'AnoMes': 'AnoMes', 'Quantidade': 'Quantidade'})
+        df_plot = pd.concat([dados, previsao], ignore_index=True)
+        return df_plot, None
 
-    df_plot = pd.concat([dados, previsao], ignore_index=True)
-    return df_plot, None
+    except Exception:
+        # Caso a previsão falhe, retorna apenas histórico
+        return dados, "Não foi possível gerar previsão (modelo não convergiu)."
 
-# === 6. App Dash ===
+# === Dash App ===
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 clientes = sorted(agrupado['Cliente'].unique())
@@ -100,15 +97,15 @@ def atualizar_produtos(cliente):
 )
 def atualizar_grafico(cliente, produto):
     df_plot, erro = prever(cliente, produto)
-    if erro:
-        return px.line(title="Erro"), erro
+
+    if df_plot.empty:
+        return px.line(title="Sem dados"), erro
+
     fig = px.line(df_plot, x='AnoMes', y='Quantidade', color='Previsao', title=f"{cliente} - {produto}", markers=True)
     fig.update_layout(xaxis_title='Mês', yaxis_title='Quantidade Vendida')
-    return fig, None
+    return fig, erro
 
-# === 7. Executar o app ===
-import os
-
+# === Rodar o App ===
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8050))
     app.run(host='0.0.0.0', port=port)
